@@ -1,7 +1,8 @@
 import os
 import shutil
+import logging
 
-from six import string_types
+from six import string_types, StringIO
 
 try:
     import unittest2 as unittest
@@ -9,7 +10,7 @@ except ImportError:
     import unittest
 
 __test__ = False
-__unittest = True
+__unittest__ = True
 
 
 class DirSyncTestCase(unittest.TestCase):
@@ -30,12 +31,17 @@ class DirSyncTestCase(unittest.TestCase):
 
     def tearDown(self):
         for x in os.listdir('.'):
-            if os.path.isfile(x):
-                os.remove(x)
-            else:
-                # using absolute path seems to prevent windows error
-                # with python 2.7.2
-                shutil.rmtree(os.path.join(os.getcwd(), x))
+            self.rm(x)
+
+        # cleanup dirsync logger
+        log = logging.getLogger('dirsync')
+        for hdl in log.handlers:
+            log.removeHandler(hdl)
+
+        # cleanup test log stream
+        log_stream = getattr(self, '_log_stream', None)
+        if log_stream:
+            log_stream.close()
 
     def mk_tree(self, name, structure=()):
         cwd = os.getcwd()
@@ -50,6 +56,27 @@ class DirSyncTestCase(unittest.TestCase):
                     self.mk_tree(*x)
         finally:
             os.chdir(cwd)
+
+    @property
+    def logger(self):
+        """Creates a test logger for output analysis"""
+        logger = getattr(self, '_logger', None)
+        if logger:
+            return logger
+        self._logger = logging.getLogger('dirsync_test')
+        self._logger.setLevel(logging.INFO)
+        for h in self._logger.handlers:
+            self._logger.removeHandler(h)
+        self._log_stream = StringIO()
+        hdl = logging.StreamHandler(self._log_stream)
+        hdl.setFormatter(logging.Formatter('%(message)s'))
+        self._logger.addHandler(hdl)
+        return self._logger
+
+    @property
+    def output(self):
+        """Retrieves the logging output"""
+        return self._log_stream.getvalue()
 
     def rm(self, path):
         """Removes a directory or a file"""

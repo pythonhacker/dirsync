@@ -17,6 +17,9 @@ import stat
 import time
 import shutil
 import re
+import logging
+
+from .options import OPTIONS
 
 
 class DCMP(object):
@@ -31,9 +34,17 @@ class Syncer(object):
     """ An advanced directory synchronisation, update
     and file copying class """
 
-    prog_name = "dirsync.py"
+    def __init__(self, dir1, dir2, action, **options):
 
-    def __init__(self, dir1, dir2, **options):
+        self.logger = options.get('logger', None)
+        if not self.logger:
+            # configure default logger to stdout
+            log = logging.getLogger('dirsync')
+            log.setLevel(logging.INFO)
+            hdl = logging.StreamHandler(sys.stdout)
+            hdl.setFormatter(logging.Formatter('%(message)s'))
+            log.addHandler(hdl)
+            self.logger = log
 
         self._dir1 = dir1
         self._dir2 = dir2
@@ -63,19 +74,27 @@ class Syncer(object):
         self._numdelffld = 0
         self._numdeldfld = 0
 
-        # options setup
-        self._verbose = options.get('verbose', False)
-        self._mainfunc = getattr(self, options['action'])
-        self._purge = options.get('purge', False)
-        self._copydirection = 2 if options.get('nodirection', False) else 0
-        self._forcecopy = options.get('force', False)
-        self._maketarget = options.get('create', False)
-        self._modtimeonly = options.get('modtime', False)
+        self._mainfunc = getattr(self, action)
 
-        self._ignore = options.get('ignore', [])
-        self._only = options.get('only', [])
-        self._exclude = options.get('exclude', [])
-        self._include = options.get('include', [])
+        # options setup
+        def get_option(name):
+            return options.get(name, OPTIONS[name][1]['default'])
+
+        self._verbose = get_option('verbose')
+        self._purge = get_option('purge')
+        self._copydirection = 2 if get_option('nodirection') else 0
+        self._forcecopy = get_option('force')
+        self._maketarget = get_option('create')
+        self._modtimeonly = get_option('modtime')
+
+        self._ignore = get_option('ignore')
+        self._only = get_option('only')
+        self._exclude = list(get_option('exclude'))
+        self._include = get_option('include')
+
+        # excludes .dirsync file by default, must explicitly be in include
+        # not to be excluded
+        self._exclude.append('^\.dirsync$')
 
         if not os.path.isdir(self._dir1):
             raise ValueError(
@@ -87,7 +106,7 @@ class Syncer(object):
                 "(Try the -c option)." % self._dir2)
 
     def log(self, msg=''):
-        sys.stdout.write(msg + '\n')
+        self.logger.info(msg)
 
     def _compare(self, dir1, dir2):
 
@@ -445,7 +464,6 @@ class Syncer(object):
 
         if self._dcmp.left_only:
             self.log('Only in %s' % dir1)
-            files = []
             for x in sorted(self._dcmp.left_only):
                 self.log('>> %s' % x)
             self.log('')
@@ -542,63 +560,3 @@ class Syncer(object):
             self.log('%d directories could not be purged.' % self._numdeldfld)
         if self._numdelffld:
             self.log('%d files could not be purged.' % self._numdelffld)
-
-
-def sync(src_dir, tgt_dir, action, **options):
-
-    copier = Syncer(src_dir, tgt_dir, action=action, **options)
-    copier.do_work()
-
-    # print report at the end
-    copier.report()
-
-    return set(copier._changed).union(copier._added).union(copier._deleted)
-
-
-def execute_from_command_line():
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description='Syncer: Command line directory diff, synchronization, '\
-                    'update & copy\n'\
-                    'Authors: Anand Pillai (v1.0), Thomas Khyn (v2.x)')
-
-    parser.add_argument('sourcedir', action='store', help='Source directory')
-    parser.add_argument('targetdir', action='store', help='Target directory')
-
-    parser.add_argument('--verbose', '-v', action='store_true', default=False,
-        help='Provide verbose output')
-    parser.add_argument('--diff', '-d', action='store_const', dest='action',
-        const='diff', default=False,
-        help='Only report difference between sourcedir and targetdir')
-    parser.add_argument('--sync', '-s', action='store_const', dest='action',
-        const='sync', default=False,
-        help='Synchronize content between sourcedir and targetdir')
-    parser.add_argument('--update', '-u', action='store_const', dest='action',
-        const='update', default=False,
-        help='Update existing content between sourcedir and targetdir')
-    parser.add_argument('--purge', '-p', action='store_true', default=False,
-        help='Purge files when synchronizing (does not purge by default)')
-    parser.add_argument('--force', '-f', action='store_true', default=False,
-        help='Force copying of files, by trying to change file permissions')
-    parser.add_argument('--nodirection', '-n', action='store_true',
-        default=False,
-        help='Create target directory if it does not exist ' \
-             '(By default, target directory should exist.)')
-    parser.add_argument('--create', '-c', action='store_true', default=False,
-        help='Only compare file\'s modification times for an update '\
-             '(By default, compares source file\'s creation time also)')
-    parser.add_argument('--modtime', '-m', action='store_true', default=False,
-        help='Update existing content between sourcedir and targetdir')
-    parser.add_argument('--only', '-o', action='store', nargs='+', default=[],
-        help='Patterns to exclusively include (exclude every other)')
-    parser.add_argument('--exclude', '-e', action='store', nargs='+',
-        default=[], help='Patterns to exclude')
-    parser.add_argument('--include', '-i', action='store', nargs='+',
-        default=[], help='Patterns to include (with precedence over excludes)')
-    parser.add_argument('--ignore', '-x', action='store', nargs='+',
-        default=[], help='Patterns to ignore (no action)')
-
-    options = vars(parser.parse_args())
-
-    sync(options.pop('sourcedir'), options.pop('targetdir'), **options)
