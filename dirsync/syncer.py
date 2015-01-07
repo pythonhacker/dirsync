@@ -7,7 +7,8 @@ update a directory from another, taking
 into account time-stamps of files etc.
 
 (c) Thomas Khyn 2014
-Based on Robocopy by Anand B Pillai
+
+Based on Robocopy by Anand B Pillai.
 
 """
 
@@ -46,6 +47,9 @@ class Syncer(object):
             log.addHandler(hdl)
             self.logger = log
 
+        # Name of the program
+        self._name = 'dirsync'
+        
         self._dir1 = dir1
         self._dir2 = dir2
 
@@ -82,10 +86,10 @@ class Syncer(object):
 
         self._verbose = get_option('verbose')
         self._purge = get_option('purge')
-        self._copydirection = 2 if get_option('nodirection') else 0
+        self._copydirection = 2 if get_option('twoway') else 0
         self._forcecopy = get_option('force')
         self._maketarget = get_option('create')
-        self._modtimeonly = get_option('modtime')
+        self._modtimeonly = True # get_option('modtime')
 
         self._ignore = get_option('ignore')
         self._only = get_option('only')
@@ -95,21 +99,27 @@ class Syncer(object):
         # excludes .dirsync file by default, must explicitly be in include
         # not to be excluded
         self._exclude.append('^\.dirsync$')
-
+        
         if not os.path.isdir(self._dir1):
-            raise ValueError(
-                "Argument Error: Source directory does not exist!")
+            self.exit_("Error: Source directory %s does not exist" % self._dir1)
 
         if not self._maketarget and not os.path.isdir(self._dir2):
-            raise ValueError(
-                "Argument Error: Target directory %s does not exist! " \
-                "(Try the -c option)." % self._dir2)
+            self.exit_(
+                "Error: Target directory %s does not exist." \
+                "Try the -c or --create option to create it." % self._dir2)
 
+    def exit_(self, msg):
+        """ Print an error message and exit with error """
+
+        print msg
+        sys.exit(2)
+        
     def log(self, msg=''):
         self.logger.info(msg)
 
     def _compare(self, dir1, dir2):
-
+        """ Compare contents of two directories """
+        
         left = set()
         right = set()
 
@@ -188,6 +198,7 @@ class Syncer(object):
                     self.log('Creating directory %s' % self._dir2)
                 try:
                     os.makedirs(self._dir2)
+                    self._numnewdirs += 1                   
                 except Exception as e:
                     self.log(str(e))
                     return None
@@ -247,6 +258,7 @@ class Syncer(object):
                 to_make = os.path.join(self._dir2, f1)
                 if not os.path.exists(to_make):
                     os.makedirs(to_make)
+                    self._numnewdirs += 1
                     self._added.append(to_make)
 
         # common files/directories
@@ -289,6 +301,7 @@ class Syncer(object):
                             os.chmod(os.path.dirname(dir2_root), 1911)
                         try:
                             os.makedirs(dir2)
+                            self._numnewdirs += 1
                         except OSError as e:
                             self.log(str(e))
                             self._numdirsfld += 1
@@ -318,6 +331,7 @@ class Syncer(object):
 
                         try:
                             os.makedirs(dir1)
+                            self._numnewdirs += 1                           
                         except OSError as e:
                             self.log(str(e))
                             self._numdirsfld += 1
@@ -536,7 +550,7 @@ class Syncer(object):
         # We need only the first 4 significant digits
         tt = (str(self._endtime - self._starttime))[:4]
 
-        self.log('\nPython syncer finished in %s seconds.' % tt)
+        self.log('\n%s finished in %s seconds.' % (self._name, tt))
         self.log('%d directories parsed, %d files copied' %
                  (self._numdirs, self._numfiles))
         if self._numdelfiles:
@@ -549,14 +563,14 @@ class Syncer(object):
             self.log('%d files were updated by timestamp.' % self._numupdates)
 
         # Failure stats
-        self.log('\n')
+        self.log('')
         if self._numcopyfld:
-            self.log('%d files could not be copied.' % self._numcopyfld)
+            self.log('there were errors in copying %d files.' % self._numcopyfld)
         if self._numdirsfld:
-            self.log('%d directories could not be created.' % self._numdirsfld)
+            self.log('there were errors in creating %d directories.' % self._numdirsfld)
         if self._numupdsfld:
-            self.log('%d files could not be updated.' % self._numupdsfld)
+            self.log('there were errors in updating %d files.' % self._numupdsfld)
         if self._numdeldfld:
-            self.log('%d directories could not be purged.' % self._numdeldfld)
+            self.log('there were errors in purging %d directories.' % self._numdeldfld)
         if self._numdelffld:
-            self.log('%d files could not be purged.' % self._numdelffld)
+            self.log('there were errors in purging %d files.' % self._numdelffld)
