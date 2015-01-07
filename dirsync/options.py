@@ -39,7 +39,7 @@ options = (
         dest='action',
         const='sync',
         default=False,
-        help='Synchronize content between sourcedir and targetdir'
+        help='Synchronize content from sourcedir to targetdir'
     ))),
     ('update', (('-u',), dict(
         action='store_const',
@@ -58,23 +58,16 @@ options = (
         default=False,
         help='Force copying of files, by trying to change file permissions'
     ))),
-    ('nodirection', (('-n',), dict(
+    ('twoway', (('-t',), dict(
         action='store_true',
         default=False,
-        help='Update files in source directory from target'
-             'directory (only updates target from source by default)'
+        help='Synchronize files from target to source directory as well'
     ))),
     ('create', (('-c',), dict(
         action='store_true',
         default=False,
         help='Create target directory if it does not exist ' \
              '(By default, target directory should exist).'
-    ))),
-    ('modtime', (('-m',), dict(
-        action='store_true',
-        default=False,
-        help='Only compare file\'s modification times for an update '\
-             '(By default, compares source file\'s creation time also).'
     ))),
     ('only', (('-o',), dict(
         action='store', nargs='+',
@@ -104,7 +97,12 @@ OPTIONS = OrderedDict(options)
 
 class ArgParser(ArgumentParser):
 
+    # Content for default config file.
+    default_cfg = "[defaults]\naction = sync\n\n"
+
     def __init__(self, *args, **kwargs):
+        self.first_time()
+        
         kwargs['description'] = \
             'Syncer: Command line directory diff, synchronization, ' \
             'update & copy\n' \
@@ -120,6 +118,15 @@ class ArgParser(ArgumentParser):
         for opt, args in options:
             self.add_argument('--' + opt, *args[0], **args[1])
 
+    def first_time(self):
+        """ Actions to perform for first-time run """
+
+        cfgfile = os.path.expanduser('~/.dirsync')
+        if not os.path.isfile(cfgfile):
+            # print 'Creating config file %s ...' % cfgfile,
+            open(cfgfile, 'w').write(self.default_cfg)
+            # print ' done.'
+        
     def parse_args(self, args=None, namespace=None):
         if args or len(sys.argv) > 1:
             # if no args nor sys.argv, we don't bother loading the config as
