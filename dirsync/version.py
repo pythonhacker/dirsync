@@ -28,7 +28,7 @@ def get_version(version=__version_info__):
 
 def get_hg_chgset():
     try:
-        return subprocess.check_output(['hg', 'id', '-i']).strip()
+        return subprocess.check_output(['hg', 'id', '-i'], stderr=subprocess.STDOUT).strip()
     except:
         return '?'
 
